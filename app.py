@@ -1,227 +1,650 @@
 import streamlit as st
-from datetime import datetime
 import random
-from streamlit_drawable_canvas import st_canvas
+from datetime import datetime, timedelta
+import re
+import json
+import requests
 
-# --- 1. إعدادات الصفحة ---
-st.set_page_config(page_title="سمارت باث برو | Smart Path Pro", layout="wide")
+st.set_page_config(page_title="Smart Path Pro", layout="wide", page_icon="🚀")
 
-# --- 2. قائمة الـ 50 رسالة (عتاب وتشجيع) ---
-messages_50 = [
-    "وقتك عدى، بس البطل الحقيقي بيقوم تاني ويكمل.", "الكسل عدو النجاح، يلا نعوض اللي فات!", "زعلتني منك، المهمة دي كانت مهمة، ابدأي دلوقتي.",
-    "مفيش نجاح من غير التزام، قومي خلصيها.", "فات الميعاد، بس لسه في أمل ننجزها.", "كل تأخيرة وفيها خيرة لو بدأنا فوراً.",
-    "الذكاء الاصطناعي مبيستناش، شدي حيلك!", "ليه التأخير؟ أنتِ أقوى من كده.", "عتاب خفيف: كان ممكن نخلصها في وقتها.",
-    "تسنيم المبدعة مبتسيبش مهامها كده، صح؟", "الوقت كالسيف، خلينا نركز أكتر.", "بلاش تراكمي الشغل، ابدأي حالاً.",
-    "فرصة ضاعت، بس الجاي أحسن بكتير.", "النجاح بيحب الملتزمين، يلا نرجع للطريق.", "مفيش وقت للندم، في وقت للشغل.",
-    "عادي نقع، بس مش عادي نفضل مكاننا.", "المهمة بتناديكي، متتجاهليهاش.", "تأخير بسيط، نقدر نعوضه بتركيز مضاعف.",
-    "بلاش كسل، مستقبلك في 2027 مستنيكي.", "خليكي دايماً قد التحدي، خلصيها.", "النوم مش هيفيد، الإنجاز هو اللي بيفرح.",
-    "كل دقيقة بتعدي محسوبة عليكي.", "توقعي من نفسك الأفضل دايماً.", "عتاب: الديدلاين مش مجرد رقم، ده التزام.",
-    "يلا، امسحي الإحباط واكتبي إنجاز جديد.", "التسويف بيسرق الأحلام، انتبهي.", "أنتِ أشطر من إنك تسيبي دي تفوتك.",
-    "خليكي فخورة بنفسك وخلصي اللي وراكي.", "الرحلة طويلة ومحتاجة نفس، كملي.", "بلاش أعذار، النتيجة هي اللي بتتكلم.",
-    "المهمة دي زعلانة إنها متخلصتش.", "تذكري هدفك الأول، وقومي اشتغلي.", "خسارة الوقت هي أكبر خسارة.",
-    "تقدرين، بس محتاجة شوية إرادة.", "العتاب ده لأننا واثقين في قدراتك.", "متخليش حاجة توقفك، حطمي الكسل.",
-    "لسه الفرصة في إيدك، استغليها.", "الإنجاز المتأخر أحسن من عدم الإنجاز.", "بطلي تأجيل، وابدأي التنفيذ.",
-    "خليكي قوية، المهام دي بتبني مستقبلك.", "تسنيم، الكاتبة والمبرمجة مبتستسلمش.", "الوقت اللي راح مش هيرجع، استغلي الباقي.",
-    "عتاب أخير: ركزي في جدولك أكتر.", "كلنا بنغلط، الشاطر اللي بيتعلم.", "يلا نعمل 'تم الإنجاز' ونفرح.",
-    "الفرحة بالإنجاز أحلى من راحة الكسل.", "مستنيين إبداعك، متتأخريش علينا.", "المهام دي درجات سلم لنجاحك.",
-    "أنا جمبك وبشجعك، متخذلنيش.", "بدل ما نزعل على اللي فات، نخلص اللي في إيدينا."
+FIREBASE_URL = "https://smart-path-pro-default-rtdb.firebaseio.com"
+FIREBASE_SECRET = "AhELNPSgMW3DrL3s9C8TusSplnWPjzsIoWxuXr2s"
+
+def fb_get(path):
+    try:
+        r = requests.get(f"{FIREBASE_URL}/{path}.json?auth={FIREBASE_SECRET}", timeout=5)
+        return r.json() if r.status_code == 200 else None
+    except:
+        return None
+
+def fb_set(path, data):
+    try:
+        requests.put(f"{FIREBASE_URL}/{path}.json?auth={FIREBASE_SECRET}",
+                     data=json.dumps(data), timeout=5)
+    except:
+        pass
+
+def fb_push(path, data):
+    try:
+        r = requests.post(f"{FIREBASE_URL}/{path}.json?auth={FIREBASE_SECRET}",
+                          data=json.dumps(data), timeout=5)
+        return r.json().get("name") if r.status_code == 200 else None
+    except:
+        return None
+
+def fb_delete(path):
+    try:
+        requests.delete(f"{FIREBASE_URL}/{path}.json?auth={FIREBASE_SECRET}", timeout=5)
+    except:
+        pass
+
+MESSAGES_50 = [
+    "وقتك عدى، بس البطل الحقيقي بيقوم تاني ويكمل! 💪",
+    "الكسل عدو النجاح، يلا نعوض اللي فات! 🔥",
+    "مفيش نجاح من غير التزام، قومي خلصيها! ⚡",
+    "فات الميعاد، بس لسه في أمل ننجزها! 🌟",
+    "كل تأخيرة وفيها خيرة لو بدأنا فوراً! ✨",
+    "الذكاء الاصطناعي مبيستناش، شدي حيلك! 🤖",
+    "ليه التأخير؟ أنتِ أقوى من كده! 🦁",
+    "عتاب خفيف: كان ممكن نخلصها في وقتها 😅",
+    "الوقت كالسيف، خلينا نركز أكتر! ⚔️",
+    "بلاش تراكمي الشغل، ابدأي حالاً! 🚀",
+    "فرصة ضاعت، بس الجاي أحسن بكتير! 🌅",
+    "النجاح بيحب الملتزمين، يلا نرجع للطريق! 🏆",
+    "مفيش وقت للندم، في وقت للشغل! ⏰",
+    "عادي نقع، بس مش عادي نفضل مكاننا! 🌈",
+    "المهمة بتناديكي، متتجاهليهاش! 📢",
+    "تأخير بسيط، نقدر نعوضه بتركيز مضاعف! 🎯",
+    "بلاش كسل، مستقبلك مستنيكي! 🌟",
+    "خليكي دايماً قد التحدي! 💎",
+    "النوم مش هيفيد، الإنجاز هو اللي بيفرح! ☀️",
+    "كل دقيقة بتعدي محسوبة عليكي! ⏳",
+    "توقعي من نفسك الأفضل دايماً! 🦋",
+    "الديدلاين مش مجرد رقم، ده التزام! 📅",
+    "يلا، امسحي الإحباط واكتبي إنجاز جديد! ✍️",
+    "التسويف بيسرق الأحلام، انتبهي! ⚠️",
+    "أنتِ أشطر من إنك تسيبي دي تفوتك! 🌺",
+    "خليكي فخورة بنفسك وخلصي اللي وراكي! 🏅",
+    "الرحلة طويلة ومحتاجة نفس، كملي! 🌊",
+    "بلاش أعذار، النتيجة هي اللي بتتكلم! 🎤",
+    "تذكري هدفك الأول، وقومي اشتغلي! 🎯",
+    "خسارة الوقت هي أكبر خسارة! ⌛",
+    "تقدرين، بس محتاجة شوية إرادة! 💪",
+    "العتاب ده لأننا واثقين في قدراتك! 🤝",
+    "متخليش حاجة توقفك، حطمي الكسل! 💥",
+    "لسه الفرصة في إيدك، استغليها! 🌸",
+    "الإنجاز المتأخر أحسن من عدم الإنجاز! ✅",
+    "بطلي تأجيل، وابدأي التنفيذ! 🏃",
+    "خليكي قوية، المهام دي بتبني مستقبلك! 🏗️",
+    "الكاتبة والمبرمجة مبتستسلمش! 👩‍💻",
+    "الوقت اللي راح مش هيرجع، استغلي الباقي! ⏰",
+    "ركزي في جدولك أكتر! 📋",
+    "كلنا بنغلط، الشاطر اللي بيتعلم! 📚",
+    "يلا نعمل 'تم الإنجاز' ونفرح! 🎉",
+    "الفرحة بالإنجاز أحلى من راحة الكسل! 🌈",
+    "مستنيين إبداعك، متتأخريش علينا! 🎨",
+    "المهام دي درجات سلم لنجاحك! 🪜",
+    "أنا جمبك وبشجعك، متخذلنيش! 🤗",
+    "بدل ما نزعل على اللي فات، نخلص اللي في إيدينا! 💫",
+    "كل خطوة صغيرة بتقربك من حلمك الكبير! 🌠",
+    "إنتِ مش بس بتخلصي مهمة، بتبني نفسك! 🏆",
+    "الأبطال مبيتوقفوش، وإنتِ منهم! ⚡",
 ]
 
-# --- 3. محرك التصميم ---
-def apply_css(is_dark):
-    bg = "#121212" if is_dark else "#FFFFFF"
-    text = "#FFFFFF" if is_dark else "#000000"
-    sidebar_bg = "#1E1E1E" if is_dark else "#F0F2F6"
-    card_bg = "#2D2D2D" if is_dark else "#F9F9F9"
-    
-    st.markdown(f"""
-        <style>
-        .stApp {{ background-color: {bg}; color: {text}; direction: rtl; text-align: right; }}
-        [data-testid="stSidebar"] {{ background-color: {sidebar_bg} !important; }}
-        h1, h2, h3, p, label, div {{ color: {text} !important; }}
-        .header-title {{ font-size: 35px; font-weight: bold; color: #007BFF !important; border-bottom: 2px solid #007BFF; padding-bottom: 10px; margin-bottom: 20px; }}
-        .task-box {{ background-color: {card_bg}; padding: 15px; border-radius: 10px; border-right: 5px solid #007BFF; margin-bottom: 15px; }}
-        .msg-box {{ background-color: #FF4B4B22; border-right: 5px solid #FF4B4B; padding: 10px; border-radius: 5px; margin-top: 10px; font-weight: bold; }}
-        </style>
+def apply_css():
+    st.markdown("""
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap');
+    * { font-family: 'Cairo', sans-serif !important; }
+    .stApp { background: #0D0D0D; color: #FFFFFF; direction: rtl; }
+    [data-testid="stSidebar"] { background: #141414 !important; border-left: 1px solid #222; }
+    .task-card {
+        background: #1A1A2E;
+        border: 1px solid #16213E;
+        border-right: 4px solid #0F3460;
+        border-radius: 12px;
+        padding: 16px 20px;
+        margin-bottom: 12px;
+        transition: all 0.3s;
+    }
+    .task-card:hover { border-right-color: #E94560; transform: translateX(-3px); }
+    .task-card.overdue { border-right-color: #E94560; background: #1a0f0f; }
+    .task-card.done { border-right-color: #00B894; background: #0f1a10; opacity: 0.7; }
+    .msg-box {
+        background: linear-gradient(135deg, #E9456022, #E9456044);
+        border: 1px solid #E94560;
+        border-radius: 8px;
+        padding: 12px 16px;
+        margin: 8px 0;
+        font-weight: 700;
+        color: #FF6B8A !important;
+        animation: pulse 2s infinite;
+    }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.8} }
+    .home-icon {
+        background: linear-gradient(135deg, #1A1A2E, #16213E);
+        border: 2px solid #0F3460;
+        border-radius: 20px;
+        padding: 40px 20px;
+        text-align: center;
+        cursor: pointer;
+        transition: all 0.4s;
+        margin: 10px;
+    }
+    .home-icon:hover {
+        border-color: #E94560;
+        transform: translateY(-8px);
+        box-shadow: 0 15px 35px #E9456033;
+    }
+    .home-icon .icon { font-size: 64px; }
+    .home-icon .title { font-size: 22px; font-weight: 700; color: #E0E0E0; margin-top: 10px; }
+    .home-icon .sub { font-size: 13px; color: #888; margin-top: 5px; }
+    .main-title {
+        font-size: 38px;
+        font-weight: 900;
+        background: linear-gradient(90deg, #0F3460, #E94560);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        text-align: center;
+        padding: 10px 0 5px;
+    }
+    .notif-warn { background:#2d1f00; border:1px solid #FFA500; border-radius:8px; padding:8px 14px; color:#FFA500 !important; margin:5px 0; }
+    .notif-danger { background:#2d0000; border:1px solid #E94560; border-radius:8px; padding:8px 14px; color:#E94560 !important; margin:5px 0; }
+    .stButton > button {
+        border-radius: 10px !important;
+        font-family: 'Cairo', sans-serif !important;
+        font-weight: 700 !important;
+        transition: all 0.3s !important;
+    }
+    .stButton > button:hover { transform: scale(1.03) !important; }
+    .login-box {
+        max-width: 420px;
+        margin: 60px auto;
+        background: #141414;
+        border: 1px solid #222;
+        border-radius: 20px;
+        padding: 50px 40px;
+        text-align: center;
+    }
+    </style>
     """, unsafe_allow_html=True)
 
-# --- 4. تهيئة قاعدة البيانات ---
-if 'db' not in st.session_state:
-    st.session_state.db = {'tasks': [], 'arts': [], 'writings': [], 'sports': []}
+def email_to_key(email):
+    return email.replace(".", "_").replace("@", "__at__")
 
-# --- 5. التطبيق ---
-def main():
-    apply_css(st.sidebar.toggle("الوضع الداكن", value=True))
-    
-    # اسم الموقع ثابت في كل الصفحات
-    st.markdown('<div class="header-title">سمارت باث برو | Smart Path Pro</div>', unsafe_allow_html=True)
-    
-    nav = st.sidebar.radio("القائمة الرئيسية:", ["المهام الدراسية", "المرسم والمكتبة", "أكاديمية الرياضة"])
-    
-    # ------------------ 1. المهام ------------------
-    if nav == "المهام الدراسية":
-        col1, col2 = st.columns([1, 1.5])
-        with col1:
-            st.subheader("إضافة مهمة جديدة")
-            folder = st.text_input("اسم المجلد (اختياري)")
-            name = st.text_input("وصف المهمة")
-            d_date = st.date_input("تاريخ التسليم")
-            d_time = st.time_input("الوقت")
-            
-            if st.button("حفظ المهمة"):
+def is_valid_gmail(email):
+    return bool(re.match(r'^[a-zA-Z0-9._%+\-]+@gmail\.com$', email.strip()))
+
+def get_notifications(deadline: datetime):
+    now = datetime.now()
+    diff = deadline - now
+    total_hours = diff.total_seconds() / 3600
+    notifs = []
+    if total_hours < 0:
+        return []
+    if total_hours <= 0.5:
+        notifs.append(("🚨 تحذير أخير!", f"متبقي أقل من 30 دقيقة!", "danger"))
+    elif total_hours <= 2:
+        notifs.append(("⚠️ آخر إنباه", f"متبقي {round(total_hours, 1)} ساعة فقط!", "danger"))
+    elif total_hours <= 6:
+        notifs.append(("🔔 تذكير عاجل", f"متبقي {round(total_hours, 1)} ساعة", "warn"))
+    elif total_hours <= 24:
+        notifs.append(("📌 تذكير", f"متبقي أقل من يوم ({round(total_hours)}س)", "warn"))
+    elif total_hours <= 72:
+        notifs.append(("📅 تذكير", f"متبقي {int(total_hours//24)} يوم", "warn"))
+    return notifs
+
+def smart_notif_schedule(deadline: datetime, created_at: datetime):
+    now = datetime.now()
+    total_duration = (deadline - created_at).total_seconds() / 3600
+    remaining = (deadline - now).total_seconds() / 3600
+    if remaining < 0:
+        return []
+    notifs = []
+    if remaining <= 0.5:
+        notifs.append(("🚨", "تحذير أخير! متبقي أقل من 30 دقيقة!", "danger"))
+        return notifs
+    if remaining <= 2:
+        notifs.append(("⚠️", f"اوشكت على الانتهاء! متبقي {round(remaining*60)} دقيقة", "danger"))
+        return notifs
+    if total_duration >= 168:
+        if remaining <= 72:
+            notifs.append(("🔔", f"متبقي 3 أيام على الموعد!", "warn"))
+        elif remaining <= 24 * 3.5:
+            pass
+    elif total_duration >= 72:
+        if remaining <= 24:
+            notifs.append(("🔔", f"متبقي يوم واحد فقط!", "warn"))
+    elif total_duration >= 24:
+        if remaining <= 6:
+            notifs.append(("🔔", f"متبقي {round(remaining)} ساعة!", "warn"))
+    else:
+        if remaining <= 2:
+            notifs.append(("⚠️", f"متبقي {round(remaining*60)} دقيقة!", "danger"))
+    return notifs
+
+def page_login():
+    st.markdown('<div class="main-title">🚀 Smart Path Pro</div>', unsafe_allow_html=True)
+    st.markdown("<p style='text-align:center;color:#888;margin-bottom:30px'>منصتك الذكية للإنجاز والإبداع</p>", unsafe_allow_html=True)
+    col = st.columns([1, 2, 1])[1]
+    with col:
+        st.markdown("---")
+        email = st.text_input("📧 أدخلي بريدك الإلكتروني (Gmail فقط)", placeholder="example@gmail.com")
+        if st.button("دخول 🚀", use_container_width=True, type="primary"):
+            email = email.strip().lower()
+            if not is_valid_gmail(email):
+                st.error("❌ يجب إدخال بريد Gmail صحيح (ينتهي بـ @gmail.com)")
+            else:
+                key = email_to_key(email)
+                user_data = fb_get(f"users/{key}")
+                if not user_data:
+                    user_data = {"email": email, "tasks": {}, "writings": {}, "sports": {}}
+                    fb_set(f"users/{key}", user_data)
+                st.session_state.user_email = email
+                st.session_state.user_key = key
+                st.session_state.page = "home"
+                st.rerun()
+
+def page_home():
+    st.markdown(f'<div class="main-title">🚀 Smart Path Pro</div>', unsafe_allow_html=True)
+    st.markdown(f"<p style='text-align:center;color:#888'>أهلاً {st.session_state.user_email} 👋</p>", unsafe_allow_html=True)
+    st.markdown("<br>", unsafe_allow_html=True)
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.markdown("""<div class="home-icon">
+            <div class="icon">📚</div>
+            <div class="title">المهام الدراسية</div>
+            <div class="sub">نظم وتابع مهامك بذكاء</div>
+        </div>""", unsafe_allow_html=True)
+        if st.button("افتح المهام", key="btn_tasks", use_container_width=True):
+            st.session_state.page = "tasks"
+            st.rerun()
+    with col2:
+        st.markdown("""<div class="home-icon">
+            <div class="icon">✍️</div>
+            <div class="title">ستوديو الكتابة</div>
+            <div class="sub">قصص، شعر، سيناريو وأكتر</div>
+        </div>""", unsafe_allow_html=True)
+        if st.button("افتح الكتابة", key="btn_write", use_container_width=True):
+            st.session_state.page = "writing"
+            st.rerun()
+    with col3:
+        st.markdown("""<div class="home-icon">
+            <div class="icon">🏆</div>
+            <div class="title">أكاديمية الرياضة</div>
+            <div class="sub">تتبع تمارينك وإنجازاتك</div>
+        </div>""", unsafe_allow_html=True)
+        if st.button("افتح الرياضة", key="btn_sport", use_container_width=True):
+            st.session_state.page = "sports"
+            st.rerun()
+
+def page_tasks():
+    st.markdown('<div class="main-title">📚 المهام الدراسية</div>', unsafe_allow_html=True)
+    key = st.session_state.user_key
+    tasks_raw = fb_get(f"users/{key}/tasks") or {}
+    tasks = {k: v for k, v in tasks_raw.items()} if isinstance(tasks_raw, dict) else {}
+    tab_new, tab_past, tab_list = st.tabs(["➕ مهمة جديدة", "📖 تسجيل إنجاز قديم", "📋 لوحة المهام"])
+    with tab_new:
+        with st.form("new_task_form"):
+            name = st.text_input("📝 وصف المهمة *")
+            folder = st.text_input("📁 المجلد / المادة (اختياري)")
+            col1, col2 = st.columns(2)
+            with col1:
+                d_date = st.date_input("📅 تاريخ التسليم")
+            with col2:
+                d_time = st.time_input("⏰ الوقت")
+            submitted = st.form_submit_button("💾 حفظ المهمة", use_container_width=True, type="primary")
+        if submitted:
+            if not name:
+                st.error("❌ يجب كتابة اسم المهمة")
+            else:
                 deadline = datetime.combine(d_date, d_time)
-                if deadline <= datetime.now():
-                    st.error("❌ لا يمكن تسجيل مهمة وقتها انتهى في الماضي!")
-                elif not name:
-                    st.error("❌ يجب كتابة اسم المهمة.")
-                else:
-                    st.session_state.db['tasks'].append({
-                        "id": random.randint(1000, 9999), "folder": folder, "name": name, 
-                        "deadline": deadline, "done": False, "msg": ""
-                    })
-                    st.success("تم الحفظ بنجاح!")
-                    st.rerun()
-
-        with col2:
-            st.subheader("لوحة المهام")
-            if not st.session_state.db['tasks']: st.write("لا توجد مهام حالياً.")
-            
-            for i, t in enumerate(st.session_state.db['tasks']):
-                # حساب الوقت
                 now = datetime.now()
-                is_past = t['deadline'] <= now
-                
-                # إعطاء رسالة عتاب لو الوقت فات ومادستش إتمام
-                if is_past and not t['done'] and not t['msg']:
-                    t['msg'] = random.choice(messages_50)
-                
-                with st.container():
-                    st.markdown(f"""<div class="task-box">
-                        <b>المجلد:</b> {t['folder'] if t['folder'] else 'عام'} <br>
-                        <b>المهمة:</b> {t['name']} <br>
-                        <b>الموعد:</b> {t['deadline'].strftime('%Y-%m-%d %H:%M')}
-                    </div>""", unsafe_allow_html=True)
-                    
-                    if t['msg'] and not t['done']:
-                        st.markdown(f'<div class="msg-box">⚠️ {t["msg"]}</div>', unsafe_allow_html=True)
-                    
-                    if not t['done']:
-                        if st.button(f"إتمام المهمة 🎉", key=f"done_{t['id']}"):
-                            t['done'] = True
+                min_deadline = now + timedelta(hours=6)
+                if deadline < min_deadline:
+                    st.error(f"❌ الموعد يجب أن يكون بعد {min_deadline.strftime('%Y-%m-%d %H:%M')} على الأقل (6 ساعات من الآن)")
+                else:
+                    task = {
+                        "name": name, "folder": folder,
+                        "deadline": deadline.isoformat(),
+                        "created_at": now.isoformat(),
+                        "done": False, "overdue_msg": "",
+                        "type": "new"
+                    }
+                    fb_push(f"users/{key}/tasks", task)
+                    st.success("✅ تم حفظ المهمة بنجاح!")
+                    st.rerun()
+    with tab_past:
+        st.info("📖 سجّلي هنا أي إنجاز مضى وقته عشان يتحفظ في سجلك")
+        with st.form("past_task_form"):
+            p_name = st.text_input("📝 اسم الإنجاز")
+            col1, col2 = st.columns(2)
+            with col1:
+                p_start = st.date_input("🗓️ تاريخ البداية")
+            with col2:
+                p_end = st.date_input("🗓️ تاريخ الانتهاء")
+            p_notes = st.text_area("📄 ملاحظات (اختياري)")
+            submitted_p = st.form_submit_button("💾 حفظ الإنجاز", use_container_width=True)
+        if submitted_p:
+            if not p_name:
+                st.error("❌ اكتبي اسم الإنجاز")
+            elif p_end < p_start:
+                st.error("❌ تاريخ الانتهاء يجب أن يكون بعد البداية")
+            else:
+                task = {
+                    "name": p_name, "folder": "إنجازات سابقة",
+                    "deadline": datetime.combine(p_end, datetime.min.time()).isoformat(),
+                    "created_at": datetime.combine(p_start, datetime.min.time()).isoformat(),
+                    "done": True, "overdue_msg": "", "notes": p_notes,
+                    "type": "past"
+                }
+                fb_push(f"users/{key}/tasks", task)
+                st.success("🎉 تم تسجيل إنجازك!")
+                st.rerun()
+    with tab_list:
+        if not tasks:
+            st.markdown("<p style='text-align:center;color:#888;padding:40px'>لا توجد مهام بعد، أضيفي أول مهمة! 🌟</p>", unsafe_allow_html=True)
+        else:
+            filter_opt = st.radio("عرض:", ["الكل", "غير منجزة", "منجزة"], horizontal=True)
+            for tid, t in tasks.items():
+                if filter_opt == "غير منجزة" and t.get("done"):
+                    continue
+                if filter_opt == "منجزة" and not t.get("done"):
+                    continue
+                deadline = datetime.fromisoformat(t["deadline"])
+                created_at = datetime.fromisoformat(t.get("created_at", datetime.now().isoformat()))
+                now = datetime.now()
+                is_past = deadline < now
+                is_done = t.get("done", False)
+                card_class = "done" if is_done else ("overdue" if is_past else "task-card")
+                status_icon = "✅" if is_done else ("🔴" if is_past else "🟡")
+                st.markdown(f"""<div class="task-card {card_class}">
+                    <b>{status_icon} {t['name']}</b><br>
+                    <small style="color:#888">
+                        📁 {t.get('folder','عام')} &nbsp;|&nbsp; 
+                        📅 {deadline.strftime('%Y-%m-%d %H:%M')}
+                    </small>
+                </div>""", unsafe_allow_html=True)
+                if not is_done and not is_past:
+                    notifs = smart_notif_schedule(deadline, created_at)
+                    for icon, msg, level in notifs:
+                        css_class = "notif-danger" if level == "danger" else "notif-warn"
+                        st.markdown(f'<div class="{css_class}">{icon} {msg}</div>', unsafe_allow_html=True)
+                if is_past and not is_done:
+                    if not t.get("overdue_msg"):
+                        t["overdue_msg"] = random.choice(MESSAGES_50)
+                        fb_set(f"users/{key}/tasks/{tid}/overdue_msg", t["overdue_msg"])
+                    st.markdown(f'<div class="msg-box">⚠️ {t["overdue_msg"]}</div>', unsafe_allow_html=True)
+                c1, c2, c3 = st.columns([2, 1, 1])
+                with c1:
+                    if not is_done:
+                        if st.button("🎉 إتمام المهمة", key=f"done_{tid}"):
+                            fb_set(f"users/{key}/tasks/{tid}/done", True)
                             st.balloons()
                             st.rerun()
-                    else:
-                        st.success("✅ تمت بنجاح!")
-                    
-                    # تعديل وحذف
-                    with st.expander("إدارة وتعديل المهمة"):
-                        new_folder = st.text_input("تعديل المجلد", t['folder'], key=f"f_{t['id']}")
-                        new_name = st.text_input("تعديل الاسم", t['name'], key=f"n_{t['id']}")
-                        if st.button("حفظ التعديل", key=f"e_{t['id']}"):
-                            t['folder'], t['name'] = new_folder, new_name
+                with c2:
+                    with st.expander("✏️ تعديل"):
+                        new_name = st.text_input("الاسم", t['name'], key=f"en_{tid}")
+                        new_folder = st.text_input("المجلد", t.get('folder',''), key=f"ef_{tid}")
+                        if st.button("حفظ", key=f"esave_{tid}"):
+                            fb_set(f"users/{key}/tasks/{tid}/name", new_name)
+                            fb_set(f"users/{key}/tasks/{tid}/folder", new_folder)
                             st.rerun()
-                        if st.button("❌ حذف المهمة", key=f"del_{t['id']}"):
-                            st.session_state.db['tasks'].pop(i)
-                            st.rerun()
+                with c3:
+                    if st.button("🗑️ حذف", key=f"del_{tid}"):
+                        fb_delete(f"users/{key}/tasks/{tid}")
+                        st.rerun()
+                st.markdown("---")
 
-    # ------------------ 2. المرسم والمكتبة ------------------
-    elif nav == "المرسم والمكتبة":
-        tab1, tab2 = st.tabs(["🎨 المرسم", "✍️ المكتبة"])
-        
-        # المرسم
-        with tab1:
-            st.subheader("أدوات الرسم المتخصصة")
-            art_type = st.selectbox("اختر الفن", ["ديجيتال آرت", "رسم زيتي", "فحم", "ألوان مائية"])
-            
-            # تخصيص الأدوات حسب الفن
-            if art_type == "فحم":
-                st.write("تم تجهيز فرشاة دقيقة وخلفية ورق.")
-                stroke_color = st.color_picker("لون الفحم", "#333333")
-                bg_color = "#F4F1EA"
-            elif art_type == "رسم زيتي":
-                st.write("تم تجهيز فرشاة سميكة للدمج.")
-                stroke_color = st.color_picker("اختر اللون الأساسي", "#8B4513")
-                bg_color = "#FFFFFF"
+def page_writing():
+    st.markdown('<div class="main-title">✍️ ستوديو الكتابة</div>', unsafe_allow_html=True)
+    write_types = {
+        "📖 رواية / قصة": "story",
+        "🎭 شعر / قصيدة": "poetry",
+        "🎬 سيناريو": "scenario",
+        "💡 حكمة / مقولة": "quote",
+        "📰 مقال": "article",
+    }
+    col1, col2 = st.columns([1, 2])
+    with col1:
+        st.markdown("### 📂 نوع الكتابة")
+        selected = st.radio("", list(write_types.keys()), label_visibility="collapsed")
+        w_type = write_types[selected]
+        st.markdown("---")
+        st.markdown("### 💡 مساعدة AI")
+        ai_prompt = st.text_area("اكتبي فكرتك وهيساعدك", placeholder="مثلاً: قصة عن فتاة تحب الفضاء...")
+        if st.button("🤖 اقتراح AI", use_container_width=True):
+            if ai_prompt:
+                st.session_state.ai_suggestion = f"💭 بناءً على فكرتك عن '{ai_prompt}': جربي تبدأي بمشهد افتتاحي قوي يجذب القارئ، واستخدمي الحواس الخمس لتصوير البيئة."
             else:
-                stroke_color = st.color_picker("اختر اللون", "#000000")
-                bg_color = st.color_picker("لون الخلفية", "#FFFFFF")
-            
-            st_canvas(stroke_width=10, stroke_color=stroke_color, background_color=bg_color, height=300, key="art_canvas")
-            
-            art_status = st.radio("حالة اللوحة", ["تم الانتهاء", "الانتهاء لاحقاً"], key="art_stat")
-            if art_status == "الانتهاء لاحقاً":
-                art_dl = st.date_input("حدد موعد العودة للوحة")
-            if st.button("حفظ اللوحة"): st.success("تم أرشفة اللوحة.")
-
-        # المكتبة
-        with tab2:
-            st.subheader("أدوات الكتابة الاحترافية")
-            write_type = st.selectbox("نوع الكتابة", ["رواية", "شعر", "سيناريو"])
-            
-            title = st.text_input("عنوان العمل")
-            if write_type == "رواية":
-                st.text_area("بناء العالم والشخصيات")
-                content = st.text_area("أحداث الفصل")
-            elif write_type == "شعر":
-                st.text_input("الوزن والقافية المستهدفة")
-                content = st.text_area("أبيات القصيدة")
-            else:
-                st.text_area("وصف المشهد (الزمان والمكان)")
-                content = st.text_area("الحوار")
-                
-            w_status = st.radio("حالة النص", ["تم الإنجاز", "إكمال لاحقاً"], key="w_stat")
-            if w_status == "إكمال لاحقاً":
-                st.date_input("موعد إكمال النص")
-            if st.button("حفظ الكتابة"): st.success("تم الحفظ في المكتبة.")
-
-    # ------------------ 3. أكاديمية الرياضة ------------------
-    elif nav == "أكاديمية الرياضة":
-        st.subheader("أكاديمية تدريب المحترفين")
-        sport = st.selectbox("اختر الرياضة", ["جيم", "كرة قدم", "سباحة", "إسكواش", "تنس", "سلة", "باليه", "كاراتيه", "كونغ فو"])
-        
-        # تفاصيل مخصصة جداً لكل رياضة
-        if sport == "جيم":
-            st.info("نصيحة الكابتن: حافظ على التنفس السليم وقت رفع الوزن، ومتنساش الإحماء.")
-            sets = st.number_input("عدد المجاميع", min_value=1)
-            reps = st.number_input("عدد العدات في المجموعة", min_value=1)
-            calories = sets * reps * 2
-        
-        elif sport == "سباحة":
-            st.info("نصيحة الكابتن: شد بطنك أثناء العوم عشان جسمك يفضل مفرود على المية ويقلل المقاومة.")
-            style = st.selectbox("نوع العومة", ["حرة", "فراشة", "ظهر", "صدر"])
-            laps = st.number_input("عدد اللفات (طول المسبح)", min_value=1)
-            calories = laps * 15
-            
-        elif sport == "كرة قدم":
-            st.info("نصيحة الكابتن: العب السهل والممتنع، اللمسة الأولى بتحدد مسار الهجمة كلها.")
-            st.text_input("المركز الذي تم اللعب فيه")
-            duration = st.number_input("مدة اللعب (دقائق)", min_value=1)
-            calories = duration * 10
-            
-        elif sport == "إسكواش":
-            st.info("نصيحة الكابتن: سيطر على الـ (T) في نص الملعب عشان تتحكم في رتم المباراة.")
-            duration = st.number_input("مدة اللعب (دقائق)", min_value=1)
-            calories = duration * 13
-            
-        elif sport == "باليه":
-            st.info("نصيحة الكابتن: التركيز البصري في نقطة ثابتة بيحافظ على توازنك أثناء الدوران.")
-            st.number_input("مدة تمارين المرونة (دقائق)", min_value=1)
-            calories = 300
-            
-        elif sport in ["كاراتيه", "كونغ فو"]:
-            st.info("نصيحة الكابتن: قوة الضربة بتيجي من دوران الوسط مش من الإيد بس.")
-            st.text_input("اسم الكاتا أو التكنيك المتدرب عليه")
-            calories = 400
-            
+                st.warning("اكتبي فكرتك أولاً")
+    with col2:
+        st.markdown(f"### {selected}")
+        if w_type == "story":
+            title = st.text_input("📌 عنوان القصة")
+            col_a, col_b = st.columns(2)
+            with col_a:
+                genre = st.selectbox("النوع الأدبي", ["خيال علمي", "رومانسي", "تشويق", "مغامرة", "واقعي", "فانتازيا"])
+            with col_b:
+                pov = st.selectbox("وجهة السرد", ["ضمير المتكلم (أنا)", "ضمير الغائب (هو/هي)", "ضمير المخاطب (أنت)"])
+            st.markdown("**👥 الشخصيات**")
+            characters = st.text_area("اكتبي أسماء وصفات الشخصيات", placeholder="مثال: سارة - فتاة شجاعة تحب المغامرة\nكريم - صديقها الوفي")
+            st.markdown("**🌍 بناء العالم**")
+            world = st.text_area("وصف الزمان والمكان والجو العام", placeholder="مصر عام 2050، مدينة ذكية...")
+            st.markdown("**📖 المقدمة**")
+            intro = st.text_area("ابدأي القصة هنا...", height=120)
+            st.markdown("**🌀 تخيّل الخاتمة**")
+            ending_vision = st.text_area("كيف تتخيلين نهاية القصة؟", height=80)
+            st.markdown("**📝 أحداث الفصل الحالي**")
+            content = st.text_area("اكتبي الأحداث...", height=150)
+        elif w_type == "poetry":
+            title = st.text_input("📌 عنوان القصيدة")
+            col_a, col_b, col_c = st.columns(3)
+            with col_a:
+                meter = st.selectbox("البحر الشعري", ["حر", "الطويل", "الكامل", "البسيط", "الوافر", "المتقارب", "الرمل", "الخفيف"])
+            with col_b:
+                rhyme = st.text_input("حرف القافية", placeholder="مثل: اء، ون")
+            with col_c:
+                mood = st.selectbox("المشاعر", ["حب", "حزن", "فرح", "حنين", "وطنية", "فلسفي"])
+            st.markdown("**💡 نصائح البحر المختار:**")
+            meter_tips = {
+                "الطويل": "يُبنى على: فعولن مفاعيلن فعولن مفاعيلن",
+                "الكامل": "يُبنى على: متفاعلن متفاعلن متفاعلن",
+                "البسيط": "يُبنى على: مستفعلن فاعلن مستفعلن فاعلن",
+                "حر": "لا قيود على الوزن، الإيقاع من الموسيقى الداخلية",
+            }
+            st.info(meter_tips.get(meter, "اختاري البحر المناسب لمشاعرك"))
+            content = st.text_area("✍️ اكتبي أبياتك هنا...", height=250, placeholder="البيت الأول...\nالبيت الثاني...")
+            characters = world = intro = ending_vision = ""
+        elif w_type == "scenario":
+            title = st.text_input("📌 عنوان العمل")
+            col_a, col_b = st.columns(2)
+            with col_a:
+                scene_no = st.number_input("رقم المشهد", min_value=1, value=1)
+            with col_b:
+                scene_type = st.selectbox("نوع المشهد", ["داخلي", "خارجي", "فلاش باك"])
+            st.markdown("**🎬 وصف المشهد**")
+            world = st.text_area("الزمان / المكان / الإضاءة / الجو العام")
+            st.markdown("**🎭 الشخصيات في المشهد**")
+            characters = st.text_input("أسماء الشخصيات", placeholder="كريم، سارة، الأم")
+            st.markdown("**💬 الحوار**")
+            content = st.text_area("اكتبي الحوار بالشكل المسرحي:\nكريم: ...\nسارة: ...", height=200)
+            intro = ending_vision = ""
+        elif w_type == "quote":
+            title = st.text_input("📌 موضوع الحكمة")
+            content = st.text_area("✍️ اكتبي حكمتك أو مقولتك", height=150)
+            st.markdown("**🔍 مرادفات وأفكار مساعدة:**")
+            st.info("الحكمة الجيدة: قصيرة، معبّرة، تحمل فكرة كاملة في جملة واحدة")
+            characters = world = intro = ending_vision = ""
         else:
-            st.info(f"نصيحة الكابتن: استمتع بوقتك في الـ {sport} وركز على التوافق العضلي العصبي.")
-            duration = st.number_input("المدة (دقائق)", min_value=1)
-            calories = duration * 8
+            title = st.text_input("📌 عنوان المقال")
+            col_a, col_b = st.columns(2)
+            with col_a:
+                article_type = st.selectbox("النوع", ["رأي", "تحليلي", "تعليمي", "إخباري"])
+            with col_b:
+                audience = st.selectbox("الجمهور المستهدف", ["عام", "متخصص", "شباب", "أطفال"])
+            intro = st.text_area("📌 المقدمة", height=80)
+            content = st.text_area("📄 جسم المقال", height=200)
+            ending_vision = st.text_area("🔚 الخاتمة", height=80)
+            characters = world = ""
+        if hasattr(st.session_state, 'ai_suggestion'):
+            st.success(st.session_state.ai_suggestion)
+        st.markdown("---")
+        col_s, col_b2 = st.columns([2, 1])
+        with col_s:
+            status = st.radio("حالة العمل:", ["✅ تم الإنجاز", "⏳ إكمال لاحقاً"], horizontal=True)
+        with col_b2:
+            if "لاحقاً" in status:
+                remind_date = st.date_input("موعد الإكمال")
+        if st.button("💾 حفظ العمل", use_container_width=True, type="primary"):
+            wkey = st.session_state.user_key
+            writing = {
+                "title": title if 'title' in dir() else "",
+                "type": w_type,
+                "content": content if 'content' in dir() else "",
+                "status": "done" if "تم" in status else "pending",
+                "created_at": datetime.now().isoformat(),
+            }
+            fb_push(f"users/{wkey}/writings", writing)
+            st.success("💾 تم الحفظ في مكتبتك!")
 
-        st.success(f"🔥 معدل الحرق التقريبي: {calories} سُعر حراري")
-        st.text_input("الفورمة أو الإنجاز المستهدف في هذه اللعبة (الهدف)")
-        if st.button("تسجيل النشاط الرياضي"):
-            st.success("عاش يا بطلة! تم تسجيل إنجازك الرياضي.")
+def page_sports():
+    st.markdown('<div class="main-title">🏆 أكاديمية الرياضة</div>', unsafe_allow_html=True)
+    sports_data = {
+        "🏋️ جيم": {
+            "tip": "حافظ على التنفس السليم وقت رفع الوزن، ومتنساش الإحماء.",
+            "fields": ["sets", "reps", "weight"],
+            "cal_formula": lambda d: d.get("sets", 0) * d.get("reps", 0) * d.get("weight", 0) * 0.1
+        },
+        "🏊 سباحة": {
+            "tip": "شد بطنك أثناء العوم عشان جسمك يفضل مفرود على الماء.",
+            "fields": ["laps", "style"],
+            "cal_formula": lambda d: d.get("laps", 0) * 15
+        },
+        "⚽ كرة قدم": {
+            "tip": "اللمسة الأولى بتحدد مسار الهجمة كلها.",
+            "fields": ["duration", "position"],
+            "cal_formula": lambda d: d.get("duration", 0) * 10
+        },
+        "🎾 إسكواش": {
+            "tip": "سيطر على الـ T في منتصف الملعب عشان تتحكم في رتم المباراة.",
+            "fields": ["duration"],
+            "cal_formula": lambda d: d.get("duration", 0) * 13
+        },
+        "🎾 تنس": {
+            "tip": "الضربة الأساسية هي الـ forehand، اتقنيها أولاً.",
+            "fields": ["duration", "sets_won"],
+            "cal_formula": lambda d: d.get("duration", 0) * 9
+        },
+        "🏀 كرة سلة": {
+            "tip": "الدفاع بيكسب البطولات، ركز على الموقع الصحيح.",
+            "fields": ["duration", "points"],
+            "cal_formula": lambda d: d.get("duration", 0) * 8
+        },
+        "🩰 باليه": {
+            "tip": "التركيز البصري في نقطة ثابتة بيحافظ على توازنك أثناء الدوران.",
+            "fields": ["duration", "technique"],
+            "cal_formula": lambda d: d.get("duration", 0) * 6
+        },
+        "🥋 كاراتيه / كونغ فو": {
+            "tip": "قوة الضربة بتيجي من دوران الوسط مش من الإيد بس.",
+            "fields": ["duration", "kata"],
+            "cal_formula": lambda d: d.get("duration", 0) * 11
+        },
+    }
+    sport = st.selectbox("🏅 اختاري الرياضة", list(sports_data.keys()))
+    info = sports_data[sport]
+    st.info(f"💡 نصيحة الكابتن: {info['tip']}")
+    data = {}
+    col1, col2 = st.columns(2)
+    if "sets" in info["fields"]:
+        with col1:
+            data["sets"] = st.number_input("عدد المجاميع", min_value=0, value=3)
+        with col2:
+            data["reps"] = st.number_input("عدد العدات", min_value=0, value=10)
+        data["weight"] = st.number_input("الوزن (كجم)", min_value=0, value=20)
+    if "laps" in info["fields"]:
+        with col1:
+            data["laps"] = st.number_input("عدد اللفات", min_value=0, value=10)
+        with col2:
+            data["style"] = st.selectbox("نوع العومة", ["حرة", "فراشة", "ظهر", "صدر"])
+    if "duration" in info["fields"]:
+        with col1:
+            data["duration"] = st.number_input("المدة (دقائق)", min_value=0, value=45)
+    if "position" in info["fields"]:
+        with col2:
+            data["position"] = st.text_input("المركز", placeholder="مهاجم، وسط...")
+    if "points" in info["fields"]:
+        with col2:
+            data["points"] = st.number_input("النقاط المسجلة", min_value=0)
+    if "sets_won" in info["fields"]:
+        with col2:
+            data["sets_won"] = st.number_input("الأشواط المكسوبة", min_value=0)
+    if "kata" in info["fields"]:
+        data["kata"] = st.text_input("اسم الكاتا أو التكنيك")
+    if "technique" in info["fields"]:
+        data["technique"] = st.text_input("التقنية المتدربة عليها")
+    target = st.text_input("🎯 الهدف من التمرين اليوم")
+    try:
+        calories = int(info["cal_formula"](data))
+    except:
+        calories = 0
+    if calories > 0:
+        st.success(f"🔥 معدل الحرق التقريبي: **{calories}** سعر حراري")
+    if st.button("✅ تسجيل النشاط", use_container_width=True, type="primary"):
+        skey = st.session_state.user_key
+        activity = {
+            "sport": sport, "data": data, "target": target,
+            "calories": calories, "date": datetime.now().isoformat()
+        }
+        fb_push(f"users/{skey}/sports", activity)
+        st.success("🎉 عاش يا بطلة! تم تسجيل إنجازك الرياضي!")
+        st.balloons()
+    with st.expander("📊 سجل أنشطتي"):
+        skey = st.session_state.user_key
+        sports_log = fb_get(f"users/{skey}/sports") or {}
+        if sports_log:
+            for sid, act in list(sports_log.items())[-10:]:
+                date_str = datetime.fromisoformat(act["date"]).strftime("%Y-%m-%d") if "date" in act else "—"
+                st.markdown(f"**{act['sport']}** — {date_str} — 🔥 {act.get('calories',0)} سعر")
+        else:
+            st.write("لا توجد أنشطة مسجلة بعد.")
+
+def sidebar():
+    with st.sidebar:
+        st.markdown(f"**👤 المستخدم:**")
+        st.markdown(f"<small style='color:#0F3460'>{st.session_state.get('user_email','')}</small>", unsafe_allow_html=True)
+        st.markdown("---")
+        st.markdown("**القائمة:**")
+        pages = {"🏠 الرئيسية": "home", "📚 المهام": "tasks", "✍️ الكتابة": "writing", "🏆 الرياضة": "sports"}
+        for label, pg in pages.items():
+            active = "🔴" if st.session_state.get("page") == pg else "⚪"
+            if st.button(f"{active} {label}", use_container_width=True):
+                st.session_state.page = pg
+                st.rerun()
+        st.markdown("---")
+        if st.button("🚪 خروج", use_container_width=True):
+            for k in ["user_email", "user_key", "page"]:
+                st.session_state.pop(k, None)
+            st.rerun()
+
+def main():
+    apply_css()
+    if "page" not in st.session_state:
+        st.session_state.page = "login"
+    if st.session_state.page == "login":
+        page_login()
+        return
+    sidebar()
+    page = st.session_state.get("page", "home")
+    if page == "home":
+        page_home()
+    elif page == "tasks":
+        page_tasks()
+    elif page == "writing":
+        page_writing()
+    elif page == "sports":
+        page_sports()
 
 if __name__ == "__main__":
     main()
